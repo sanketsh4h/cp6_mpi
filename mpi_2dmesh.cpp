@@ -387,6 +387,15 @@ sendStridedBuffer(float *srcBuf,
    // srcBuf by the values specificed by srcOffsetColumn, srcOffsetRow.
    //
 
+    // Calculate the starting index of the subregion in the source buffer
+    int startIdx = (srcOffsetRow * srcWidth) + srcOffsetColumn;
+
+    // Calculate the size of the subregion
+    int subregionSize = sendWidth * sendHeight;
+
+    // Send the subregion using MPI_Send
+    MPI_Send(&srcBuf[startIdx], subregionSize, MPI_FLOAT, toRank, msgTag, MPI_COMM_WORLD);
+
 }
 
 void
@@ -408,15 +417,76 @@ recvStridedBuffer(float *dstBuf,
    // at dstOffsetColumn, dstOffsetRow, and that is expectedWidth, expectedHeight in size.
    //
 
+   // Calculate the starting index of the subregion in the destination buffer
+    int startIdx = (dstOffsetRow * dstWidth) + dstOffsetColumn;
+
+   // Calculate the size of the subregion
+    int subregionSize = expectedWidth * expectedHeight;
+
+   // Receive the data into the subregion using MPI_Recv
+    MPI_Recv(&dstBuf[startIdx], subregionSize, MPI_FLOAT, fromRank, msgTag, MPI_COMM_WORLD, &stat);
 }
 
+float
+sobel_filtered_pixel(float *s, int i, int j , int ncols, int nrows, float *gx, float *gy)
+{
+   float t=0.0;
 
-//
-// ADD YOUR CODE HERE
-// that performs sobel filtering
-// suggest using your cpu code from HW5, no OpenMP parallelism 
-//
+   // ADD CODE HERE: add your code here for computing the sobel stencil computation at location (i,j)
+   // of input s, returning a float
+      // Loop through the 3x3 Sobel filter
+   for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+         int neighbor_i = i + y;
+         int neighbor_j = j + x;
 
+         // Check if the neighbor pixel is within bounds
+         if (neighbor_i >= 0 && neighbor_i < nrows && neighbor_j >= 0 && neighbor_j < ncols) {
+            // Calculate the index of the neighbor pixel in the 1D array
+            int neighbor_index = neighbor_i * ncols + neighbor_j;
+
+            // Apply the convolution operation with Sobel filter weights
+            t += gx[(y + 1) * 3 + (x + 1)] * s[neighbor_index];
+         }
+      }
+   }
+
+   // Implement the same loop structure for Gy and accumulate the result in t
+   float ty = 0.0;
+   for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+         int neighbor_i = i + y;
+         int neighbor_j = j + x;
+
+         // Check if the neighbor pixel is within bounds
+         if (neighbor_i >= 0 && neighbor_i < nrows && neighbor_j >= 0 && neighbor_j < ncols) {
+            // Calculate the index of the neighbor pixel in the 1D array
+            int neighbor_index = neighbor_i * ncols + neighbor_j;
+
+            // Apply the convolution operation with Sobel filter weights
+            ty += gy[(y + 1) * 3 + (x + 1)] * s[neighbor_index];
+         }
+      }
+   }
+
+   // Calculate the magnitude of the gradient
+   t = sqrt(t * t + ty * ty);
+   return t;
+}
+
+void
+do_sobel_filtering(float *in, float *out, int ncols, int nrows)
+{
+   float Gx[] = {1.0, 0.0, -1.0, 2.0, 0.0, -2.0, 1.0, 0.0, -1.0};
+   float Gy[] = {1.0, 2.0, 1.0, 0.0, 0.0, 0.0, -1.0, -2.0, -1.0};
+
+   for (int i = 0; i < nrows; i++) {
+      for (int j = 0; j < ncols; j++) {
+         // Calculate the Sobel filtered pixel using sobel_filtered_pixel function
+         out[i * ncols + j] = sobel_filtered_pixel(in, i, j, ncols, nrows, Gx, Gy);
+      }
+   }
+}
 
 void
 sobelAllTiles(int myrank, vector < vector < Tile2D > > & tileArray) {
@@ -435,10 +505,10 @@ sobelAllTiles(int myrank, vector < vector < Tile2D > > & tileArray) {
             //std::fill(t->outputBuffer.begin(), t->outputBuffer.end(), myrank);
 
             // v2. copy the input to the output, umodified
-         //   std::copy(t->inputBuffer.begin(), t->inputBuffer.end(), t->outputBuffer.begin());
+           std::copy(t->inputBuffer.begin(), t->inputBuffer.end(), t->outputBuffer.begin());
 #endif
          // ADD YOUR CODE HERE
-         // to call your sobel filtering code on each tile
+         do_sobel_filtering(t->inputBuffer.data(), t->outputBuffer.data(), t->tileWidth, t->tileHeight);
          }
       }
    }
