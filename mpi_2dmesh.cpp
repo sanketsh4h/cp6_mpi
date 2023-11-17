@@ -112,7 +112,7 @@ parseArgs(int ac, char *av[], AppState *as)
    } // end while
 
    return rstat;
-}
+};
 
 //
 // computeMeshDecomposition:
@@ -122,12 +122,13 @@ parseArgs(int ac, char *av[], AppState *as)
 // assumptions:
 // - For tile decompositions, will use sqrt(nranks) tiles per axis
 //
-void
-computeMeshDecomposition(AppState *as, vector < vector < Tile2D > > *tileArray) {
-   int xtiles, ytiles;
-   int ntiles;
-   int halo_size = 1; 
-   if (as->decomp == ROW_DECOMP) {
+void computeMeshDecomposition(AppState *as, vector<vector<Tile2D>> *tileArray) {
+    int xtiles, ytiles;
+    int ntiles;
+    int halo_size = 1;
+
+    if (as->decomp == ROW_DECOMP) {
+
       // in a row decomposition, each tile width is the same as the mesh width
       // the mesh is decomposed along height
       xtiles = 1;
@@ -144,17 +145,15 @@ computeMeshDecomposition(AppState *as, vector < vector < Tile2D > > *tileArray) 
       ylocs[ytiles] = as->global_mesh_size[1];
 
       // then, create tiles along the y axis
-      for (int i=0; i<ytiles; i++)
-      {
-         vector < Tile2D > tiles;
-         int width =  as->global_mesh_size[0];
-         int height = ylocs[i+1]-ylocs[i];
-         Tile2D t = Tile2D(0, ylocs[i], width, height, i);
-         tiles.push_back(t);
-         tileArray->push_back(tiles);
-      }
-   }
-   else if (as->decomp == COLUMN_DECOMP) {
+        for (int i = 0; i < ytiles; i++) {
+            vector<Tile2D> tiles;
+            int width = as->global_mesh_size[0];
+            int height = ylocs[i + 1] - ylocs[i];
+            Tile2D t = Tile2D(0, ylocs[i], width, height, i, halo_size);  // Include halo_size
+            tiles.push_back(t);
+            tileArray->push_back(tiles);
+        }
+    } else if (as->decomp == COLUMN_DECOMP) {
       // in a columne decomposition, each tile height is the same as the mesh height
       // the mesh is decomposed along width
       ytiles = 1;
@@ -171,17 +170,15 @@ computeMeshDecomposition(AppState *as, vector < vector < Tile2D > > *tileArray) 
       xlocs[xtiles] = as->global_mesh_size[0];
 
       // then, create tiles along the x axis
-      vector < Tile2D > tile_row;
-      for (int i=0; i<xtiles; i++)
-      {
-         int width =  xlocs[i+1]-xlocs[i];
-         int height = as->global_mesh_size[1];
-         Tile2D t = Tile2D(xlocs[i], 0, width, height, i);
-         tile_row.push_back(t);
-      }
-      tileArray->push_back(tile_row);
-   }
-   else // assume as->decom == TILE_DECOMP
+        vector<Tile2D> tile_row;
+        for (int i = 0; i < xtiles; i++) {
+            int width = xlocs[i + 1] - xlocs[i];
+            int height = as->global_mesh_size[1];
+            Tile2D t = Tile2D(xlocs[i], 0, width, height, i, halo_size);  // Include halo_size
+            tile_row.push_back(t);
+        }
+        tileArray->push_back(tile_row);
+    } else // assume as->decom == TILE_DECOMP
    {
       // to keep things simple, we  will assume sqrt(nranks) tiles in each of x and y axes.
       // if sqrt(nranks) is not an even integer, then this approach will result in some
@@ -213,19 +210,17 @@ computeMeshDecomposition(AppState *as, vector < vector < Tile2D > > *tileArray) 
       ylocs[ytiles] = as->global_mesh_size[1];
 
       // now, build 2D array of tiles
-      int rank=0;
-      for (int j = 0; j < ytiles; j++) {  // fix me
-         vector < Tile2D > tile_row;
-         for (int i=0; i < xtiles; i++) {
-            int width, height;
-            width = xlocs[i+1]-xlocs[i];
-            height = ylocs[j+1]-ylocs[j];
-            Tile2D t = Tile2D(xlocs[i], ylocs[j], width, height, rank++);
-            tile_row.push_back(t);
-            Tile2D *t = &((*tileArray)[row][col]);
-            t->halo_size = halo_size;
-         }
-         tileArray->push_back(tile_row);
+        int rank = 0;
+        for (int j = 0; j < ytiles; j++) {
+            vector<Tile2D> tile_row;
+            for (int i = 0; i < xtiles; i++) {
+                int width, height;
+                width = xlocs[i + 1] - xlocs[i];
+                height = ylocs[j + 1] - ylocs[j];
+                Tile2D t = Tile2D(xlocs[i], ylocs[j], width, height, rank++, halo_size);  // Include halo_size
+                tile_row.push_back(t);
+            }
+            tileArray->push_back(tile_row);
       }
    }
 }
