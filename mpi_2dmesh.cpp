@@ -489,8 +489,7 @@ sobelAllTiles(int myrank, vector < vector < Tile2D > > & tileArray) {
            std::copy(t->inputBuffer.begin(), t->inputBuffer.end(), t->outputBuffer.begin());
 #endif
          // ADD YOUR CODE HERE
-         do_sobel_filtering(t->inputBuffer.data(), t->outputBuffer.data(), t->width, t->height,
-                                   t->halo_size);
+         do_sobel_filtering(t->inputBuffer.data(), t->outputBuffer.data(), t->width, t->height);
          }
       }
    }
