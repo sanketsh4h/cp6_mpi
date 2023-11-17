@@ -85,6 +85,10 @@ class Tile2D
    vector <float> inputBuffer;
    vector <float> outputBuffer;
 
+       // New members for halo cells
+    int halo_size;  // size of the halo region
+    vector<float> haloBuffer;  // buffer to hold halo cells
+
    // the constructor takes args that set the tile size and location in the overall mesh
    Tile2D(int tx, int ty, int xsize, int ysize, int rank)
    {
@@ -98,12 +102,18 @@ class Tile2D
       inputBuffer.resize(0); // start with empty tiles
       outputBuffer.resize(0);
 
+              // Initialize halo information
+      halo_size = halo;
+      haloBuffer.resize(0);
+
       // printf("Creating a Tile2D at (%d, %d) of size (%d, %d) for rank %d \n", xloc, yloc, width, height, tileRank);
    }
 
    void print(int row, int col)
    {
       printf(" Tile at [%d, %d], \tx/yloc: (%d, %d),\tbase grid size [%d,%d],\trank=%d,\tgxmin/gxmax/gymin/gymax=[%d,%d,%d,%d],\tinputBuffer.size()=%d, outputBuffer.size()=%d \n", row, col, xloc, yloc, width, height, tileRank, ghost_xmin, ghost_xmax, ghost_ymin, ghost_ymax, inputBuffer.size(), outputBuffer.size());
+      printf("\thalo_size=%d, haloBuffer.size()=%d \n", halo_size, haloBuffer.size());
+    }
    }
 
 }; // class Tile2D

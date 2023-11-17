@@ -126,7 +126,7 @@ void
 computeMeshDecomposition(AppState *as, vector < vector < Tile2D > > *tileArray) {
    int xtiles, ytiles;
    int ntiles;
-
+   int halo_size = 1; 
    if (as->decomp == ROW_DECOMP) {
       // in a row decomposition, each tile width is the same as the mesh width
       // the mesh is decomposed along height
@@ -222,6 +222,8 @@ computeMeshDecomposition(AppState *as, vector < vector < Tile2D > > *tileArray) 
             height = ylocs[j+1]-ylocs[j];
             Tile2D t = Tile2D(xlocs[i], ylocs[j], width, height, rank++);
             tile_row.push_back(t);
+            Tile2D *t = &((*tileArray)[row][col]);
+            t->halo_size = halo_size;
          }
          tileArray->push_back(tile_row);
       }
@@ -378,15 +380,6 @@ sendStridedBuffer(float *srcBuf,
 {
    int msgTag = 0;
 
-   //
-   // ADD YOUR CODE HERE
-   // That performs sending of  data using MPI_Send(), going "fromRank" and to "toRank". The
-   // data to be sent is in srcBuf, which has width srcWidth, srcHeight.
-   // Your code needs to send a subregion of srcBuf, where the subregion is of size
-   // sendWidth by sendHeight values, and the subregion is offset from the origin of
-   // srcBuf by the values specificed by srcOffsetColumn, srcOffsetRow.
-   //
-
     // Calculate the starting index of the subregion in the source buffer
     int startIdx = (srcOffsetRow * srcWidth) + srcOffsetColumn;
 
@@ -409,13 +402,6 @@ recvStridedBuffer(float *dstBuf,
    int recvSize[2];
    MPI_Status stat;
 
-   //
-   // ADD YOUR CODE HERE
-   // That performs receiving of data using MPI_Recv(), coming "fromRank" and destined for
-   // "toRank". The size of the data that arrives will be of size expectedWidth by expectedHeight 
-   // values. This incoming data is to be placed into the subregion of dstBuf that has an origin
-   // at dstOffsetColumn, dstOffsetRow, and that is expectedWidth, expectedHeight in size.
-   //
 
    // Calculate the starting index of the subregion in the destination buffer
     int startIdx = (dstOffsetRow * dstWidth) + dstOffsetColumn;
@@ -508,7 +494,8 @@ sobelAllTiles(int myrank, vector < vector < Tile2D > > & tileArray) {
            std::copy(t->inputBuffer.begin(), t->inputBuffer.end(), t->outputBuffer.begin());
 #endif
          // ADD YOUR CODE HERE
-         do_sobel_filtering(t->inputBuffer.data(), t->outputBuffer.data(), t->width, t->height);
+         do_sobel_filtering(t->inputBuffer.data(), t->outputBuffer.data(), t->width, t->height,
+                                   t->halo_size);
          }
       }
    }
@@ -531,16 +518,16 @@ scatterAllTiles(int myrank, vector < vector < Tile2D > > & tileArray, float *s, 
          {
             int fromRank=0;
 
-            // receive a tile's buffer 
-            t->inputBuffer.resize(t->width*t->height);
-            t->outputBuffer.resize(t->width*t->height);
+            // Receive a tile's buffer along with halo cells
+            t->inputBuffer.resize((t->width + 2 * t->halo_size) * (t->height + 2 * t->halo_size));
+            t->outputBuffer.resize(t->width * t->height);
 #if DEBUG_TRACE
             printf("scatterAllTiles() receive side:: t->tileRank=%d, myrank=%d, t->inputBuffer->size()=%d, t->outputBuffersize()=%d \n", t->tileRank, myrank, t->inputBuffer.size(), t->outputBuffer.size());
 #endif
 
-            recvStridedBuffer(t->inputBuffer.data(), t->width, t->height,
+            recvStridedBuffer(t->inputBuffer.data(), t->width + 2 * t->halo_size, t->height + 2 * t->halo_size,
                   0, 0,  // offset into the tile buffer: we want the whole thing
-                  t->width, t->height, // how much data coming from this tile
+                  t->width + 2 * t->halo_size, t->height + 2 * t->halo_size, // how much data coming from this tile
                   fromRank, myrank); 
          }
          else if (myrank == 0)
@@ -550,23 +537,24 @@ scatterAllTiles(int myrank, vector < vector < Tile2D > > & tileArray, float *s, 
                printf("scatterAllTiles() send side: t->tileRank=%d, myrank=%d, t->inputBuffer->size()=%d \n", t->tileRank, myrank, t->inputBuffer.size());
 #endif
 
+               // Send the entire tile buffer along with halo cells
                sendStridedBuffer(s, // ptr to the buffer to send
                      global_width, global_height,  // size of the src buffer
-                     t->xloc, t->yloc, // offset into the send buffer
-                     t->width, t->height,  // size of the buffer to send,
+                     t->xloc - t->halo_size, t->yloc - t->halo_size, // offset into the send buffer
+                     t->width + 2 * t->halo_size, t->height + 2 * t->halo_size,  // size of the buffer to send,
                      myrank, t->tileRank);
             }
-            else // rather then have rank 0 send to rank 0, just do a strided copy into a tile's input buffer
+            else // rather than having rank 0 send to rank 0, just do a strided copy into a tile's input buffer
             {
-               t->inputBuffer.resize(t->width*t->height);
-               t->outputBuffer.resize(t->width*t->height);
+               t->inputBuffer.resize((t->width + 2 * t->halo_size) * (t->height + 2 * t->halo_size));
+               t->outputBuffer.resize(t->width * t->height);
 
                off_t s_offset=0, d_offset=0;
                float *d = t->inputBuffer.data();
 
-               for (int j=0;j<t->height;j++, s_offset+=global_width, d_offset+=t->width)
+               for (int j = 0; j < t->height + 2 * t->halo_size; j++, s_offset += global_width, d_offset += t->width + 2 * t->halo_size)
                {
-                  memcpy((void *)(d+d_offset), (void *)(s+s_offset), sizeof(float)*t->width);
+                  memcpy((void *)(d + d_offset), (void *)(s + s_offset), sizeof(float) * (t->width + 2 * t->halo_size));
                }
             }
          }
@@ -583,6 +571,7 @@ scatterAllTiles(int myrank, vector < vector < Tile2D > > & tileArray, float *s, 
 #endif
       
 }
+
 
 void
 gatherAllTiles(int myrank, vector < vector < Tile2D > > & tileArray, float *d, int global_width, int global_height)
